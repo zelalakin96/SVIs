@@ -11,7 +11,7 @@ CURRENT_TIME = "2025-06-17 12:49:22"
 CURRENT_USER = "zelalakin96"
 
 # **1. API Key**
-GOOGLE_STREET_VIEW_API_KEY = "AIzaSyBIOKbgCD2Sec2fSHek1vVF4mHyWLmHFjo"
+GOOGLE_STREET_VIEW_API_KEY = "API_key"
 
 # **2. Upload Excel Files**
 print("Please upload Excel files containing coordinate data (columns: code, x, y, point_id)")
