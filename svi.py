@@ -6,44 +6,38 @@ from google.colab import files
 from PIL import Image  # For image checking using Pillow library
 import shutil
 
-# **1. API Anahtarınızı Girin**
-GOOGLE_STREET_VIEW_API_KEY = "AIzaSyA0P9qlaExBaOLYmeIu3OoxNDfdXx9C978"  # Kendi API anahtarınızı buraya yapıştırın!
+# Session information
+CURRENT_TIME = "2025-06-17 12:49:22"
+CURRENT_USER = "zelalakin96"
 
-# **2. Excel Dosyalarını Yükleme**
-print("Lütfen koordinat verilerini içeren Excel dosyalarını yükleyin (B sütunu boylam, C sütunu enlem olmalı).")
+# **1. API Key**
+GOOGLE_STREET_VIEW_API_KEY = "AIzaSyBIOKbgCD2Sec2fSHek1vVF4mHyWLmHFjo"
+
+# **2. Upload Excel Files**
+print("Please upload Excel files containing coordinate data (columns: code, x, y, point_id)")
 uploaded_files = files.upload()
 
-# **3. Excel Dosyaları İçin İşleme Fonksiyonu**
+# **3. Processing Function for Excel Files**
 def process_excel_file(excel_file_name, file_content):
-    # **3. Excel Dosyasını Okuma**
+    # **3. Reading Excel File**
     try:
         df = pd.read_excel(io.BytesIO(file_content), decimal=',')
-        print(f"Excel dosyası '{excel_file_name}' başarıyla okundu.")
+        print(f"Excel file '{excel_file_name}' successfully read.")
     except Exception as e:
-        print(f"Excel dosyası okuma hatası: {e}")
+        print(f"Excel file reading error: {e}")
         return
 
-    # **4. Tekrar Eden Koordinatları Filtreleme**
-    print("Tekrar eden koordinatlar kontrol ediliyor...")
-    initial_coordinate_count = len(df)
-    df.drop_duplicates(subset=['x', 'y'], keep='first', inplace=True)  # 'x' ve 'y' sütunlarına göre tekrar edenleri sil
-    unique_coordinate_count = len(df)
-    if unique_coordinate_count < initial_coordinate_count:
-        print(f"Tekrar eden {initial_coordinate_count - unique_coordinate_count} koordinat bulundu ve kaldırıldı. {unique_coordinate_count} benzersiz koordinat işlenecek.")
-    else:
-        print("Tekrar eden koordinat bulunamadı.")
-
-    # **5. Görüntüleri Kaydetmek İçin Klasör Oluşturma**
+    # **4. Create Folder for Images**
     output_folder = "street_view_images"
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
-        print(f"'{output_folder}' klasörü oluşturuldu.")
+        print(f"'{output_folder}' folder created.")
 
-    # **6. Sokak Görünümü İndirme Fonksiyonu**
-    def indir_sokak_gorunumu(student_id, lat, lon, heading, output_path):
+    # **5. Street View Download Function**
+    def download_street_view(code, point_id, lat, lon, heading, output_path):
         url = "https://maps.googleapis.com/maps/api/streetview"
         params = {
-            "size": "640x640",  # Görüntü boyutu
+            "size": "640x640",
             "location": f"{lat},{lon}",
             "heading": heading,
             "fov": "90",
@@ -53,64 +47,72 @@ def process_excel_file(excel_file_name, file_content):
 
         try:
             response = requests.get(url, params=params, stream=True)
-            response.raise_for_status()  # Hata durumunda HTTPError yükseltir (4xx veya 5xx hataları)
+            response.raise_for_status()
 
-            if response.headers['content-type'] == 'image/jpeg':  # Görüntü içeriği kontrolü
+            if response.headers['content-type'] == 'image/jpeg':
                 with open(output_path, "wb") as out_file:
                     for chunk in response.iter_content(chunk_size=8192):
                         out_file.write(chunk)
-                print(f" -> Başlık: {heading}° - Görüntü kaydedildi: {output_path}")  # Daha detaylı çıktı
+                print(f" -> Heading: {heading}° - Image saved: {output_path}")
                 return True
             else:
-                print(f" -> Başlık: {heading}° - Görüntü alınamadı (Görüntü değil): {response.headers['content-type']}")  # Daha detaylı çıktı
+                print(f" -> Heading: {heading}° - Failed to get image (Not an image): {response.headers['content-type']}")
                 return False
 
         except requests.exceptions.HTTPError as errh:
-            print(f" -> Başlık: {heading}° - HTTP Hatası: {errh}")  # Daha detaylı çıktı
+            print(f" -> Heading: {heading}° - HTTP Error: {errh}")
             return False
         except requests.exceptions.ConnectionError as errc:
-            print(f" -> Başlık: {heading}° - Bağlantı Hatası: {errc}")  # Daha detaylı çıktı
+            print(f" -> Heading: {heading}° - Connection Error: {errc}")
             return False
         except requests.exceptions.Timeout as errt:
-            print(f" -> Başlık: {heading}° - Zaman Aşımı Hatası: {errt}")  # Daha detaylı çıktı
+            print(f" -> Heading: {heading}° - Timeout Error: {errt}")
             return False
         except requests.exceptions.RequestException as err:
-            print(f" -> Başlık: {heading}° - İstek Hatası: {err}")  # Daha detaylı çıktı
+            print(f" -> Heading: {heading}° - Request Error: {err}")
             return False
 
-    # **7. Koordinatları İşleme ve Görüntüleri İndirme**
-    print(f"\nSokak görünümleri '{excel_file_name}' dosyası için indiriliyor...")
+    # **6. Process Coordinates and Download Images**
+    print(f"\nDownloading street views for file '{excel_file_name}'...")
     for index, row in df.iterrows():
         try:
-            student_id = row['STUDENTID']
-            lat = row['y']  # veya df.iloc[index, 2] sütun indeksine göre (C sütunu - ENLEM)
-            lon = row['x']  # veya df.iloc[index, 1] sütun indeksine göre (B sütunu - BOYLAM)
+            code = row['code']        # S1, S2, etc.
+            point_id = row['point_id']
+            lat = row['y']  # latitude
+            lon = row['x']  # longitude
 
-            if pd.isna(lat) or pd.isna(lon):  # Boş koordinat kontrolü
-                print(f"Satır {index+2}: Geçersiz koordinatlar (boş değer). Atlanıyor.")  # Excel satır numarası için +2
+            if pd.isna(lat) or pd.isna(lon):
+                print(f"Row {index+2}: Invalid coordinates (empty value). Skipping.")
                 continue
 
             try:
-                lat = float(lat)
-                lon = float(lon)
+                lat = float(str(lat).replace(',', '.'))
+                lon = float(str(lon).replace(',', '.'))
             except ValueError:
-                print(f"Satır {index+2}: Geçersiz koordinatlar (sayısal değil). Atlanıyor.")
+                print(f"Row {index+2}: Invalid coordinates (not numeric). Skipping.")
                 continue
 
-            print(f"Satır {index+2}: Koordinat {index+1} - StudentID: {student_id}, Enlem: {lat}, Boylam: {lon}")  # Daha detaylı çıktı
+            print(f"Row {index+2}: Coordinate {index+1} - Code: {code}, Point ID: {point_id}, Lat: {lat}, Lon: {lon}")
 
             for heading in [0, 90, 180, 270]:
-                dosya_adi = f"street_view_{student_id}_lat{lat}_lon{lon}_heading{heading}.jpg"
-                output_path = os.path.join(output_folder, dosya_adi)
-                indir_sokak_gorunumu(student_id, lat, lon, heading, output_path)
+                # New file naming format: S1_p0001_0.jpg
+                formatted_point_id = str(point_id).zfill(4)
+                file_name = f"{code}_p{formatted_point_id}_{heading}.jpg"
+                output_path = os.path.join(output_folder, file_name)
+                download_street_view(code, point_id, lat, lon, heading, output_path)
 
-        except Exception as genel_hata:
-            print(f"Satır {index+2} işlenirken genel hata oluştu: {genel_hata}")
+        except Exception as general_error:
+            print(f"General error occurred while processing row {index+2}: {general_error}")
 
-    print(f"\nSokak görünümleri '{excel_file_name}' dosyası için indirme tamamlandı.")
+    print(f"\nStreet view download completed for file '{excel_file_name}'.")
 
-    # **8. İndirilen Görüntüleri Zip Dosyası Olarak İndirme**
+    # **7. Download Images as Zip File**
     zip_file_name = f"{output_folder}.zip"
-    shutil.make_archive(output_folder, 'zip', output_folder)  # Klasörü zip yap
-    print(f"\nİndirilen görüntüler '{zip_file_name}' olarak zip dosyasına kaydedildi.")
-    files.download(zip_file_name)  # Zip dosyasını indir
+    shutil.make_archive(output_folder, 'zip', output_folder)
+    print(f"\nDownloaded images have been saved as '{zip_file_name}'.")
+    files.download(zip_file_name)
+
+# Process each uploaded file
+for filename, content in uploaded_files.items():
+    print(f"\nProcessing file: {filename}")
+    process_excel_file(filename, content)
